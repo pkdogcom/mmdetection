@@ -2,19 +2,20 @@ import argparse
 import json
 import os
 
+import mmcv
 import numpy as np
 from PIL import Image
 
-
-class MyEncoder(json.JSONEncoder):
-
-    # to solve the problem that TypeError(repr(o) + " is not JSON serializable"
-    def default(self, obj):
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, bytes):
-            return str(obj, encoding='utf-8')
-        return json.JSONEncoder.default(self, obj)
+#
+# class MyEncoder(json.JSONEncoder):
+#
+#     # to solve the problem that TypeError(repr(o) + " is not JSON serializable"
+#     def default(self, obj):
+#         if isinstance(obj, np.ndarray):
+#             return obj.tolist()
+#         elif isinstance(obj, bytes):
+#             return str(obj, encoding='utf-8')
+#         return json.JSONEncoder.default(self, obj)
 
 
 def parse_args():
@@ -48,7 +49,8 @@ def parse_wider_gt(ann_file):
                 bboxes.append([x, y, x + w, y + h])
             else:
                 bboxes_ignore.append([x, y, x+w, y + h])
-        wider_annot_dict[filename] = (np.reshape(np.array(bboxes), [-1, 4]), np.reshape(np.array(bboxes_ignore), [-1, 4]))
+        wider_annot_dict[filename] = (np.reshape(np.array(bboxes, dtype=np.float32), [-1, 4]),
+                                      np.reshape(np.array(bboxes_ignore, dtype=np.float32), [-1, 4]))
     return wider_annot_dict
 
 
@@ -58,10 +60,9 @@ def convert_wider_annots(root_dir, out_dir):
     subsets = ['train', 'val']
 
     for subset in subsets:
-        json_name = 'instances_WIDER_{}.json'.format(subset)
+        out_file = os.path.join(out_dir, 'WIDER_{}.pkl'.format(subset))
 
         print('Starting %s' % subset)
-        ann_dict = {}
         images = []
         ann_file = os.path.join(root_dir, 'wider_face_split', 'wider_face_{}_bbx_gt.txt'.format(subset))
 
@@ -77,15 +78,16 @@ def convert_wider_annots(root_dir, out_dir):
             image['height'] = im.height
             image['filename'] = filename
             bboxes, bboxes_ignore = wider_annot_dict[filename]
-            image['ann'] = {'bboxes': bboxes, 'labels': np.ones([len(bboxes)], dtype=np.int),
+            image['ann'] = {'bboxes': bboxes, 'labels': np.ones([len(bboxes)], dtype=np.int64),
                             'bboxes_ignore': bboxes_ignore,
-                            'labels_ignore': np.ones([len(bboxes_ignore)], dtype=np.int)}
+                            'labels_ignore': np.ones([len(bboxes_ignore)], dtype=np.int64)}
             images.append(image)
 
         print("Num images: %s" % len(images))
-        with open(os.path.join(out_dir, json_name), 'w', encoding='utf8') as outfile:
-            outfile.write(json.dumps(images, cls=MyEncoder, indent=4))
-            outfile.close()
+        mmcv.dump(images, out_file)
+        # with open(os.path.join(out_dir, json_name), 'w', encoding='utf8') as outfile:
+        #     outfile.write(json.dumps(images, cls=MyEncoder, indent=4))
+        #     outfile.close()
 
 
 if __name__ == '__main__':
